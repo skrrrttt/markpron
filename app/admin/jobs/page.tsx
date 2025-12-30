@@ -6,7 +6,7 @@ import { getSupabaseClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { 
   Plus, Search, Filter, Calendar, List, Columns3,
-  ChevronRight, Flag, Phone, MapPin
+  ChevronRight, Flag, MapPin
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -19,19 +19,24 @@ interface Stage {
   is_field_visible: boolean;
 }
 
+interface JobFlag {
+  id: string;
+  flag: { name: string; color: string; icon: string } | null;
+}
+
 interface Job {
   id: string;
   name: string;
-  description: string;
-  job_address_city: string;
-  scheduled_date: string;
-  quote_amount: number;
+  description: string | null;
+  job_address_city: string | null;
+  scheduled_date: string | null;
+  quote_amount: number | null;
   priority: number;
   created_at: string;
-  stage_id: string;
-  stage: Stage;
-  customer: { id: string; name: string; company: string; phone: string };
-  flags: { id: string; flag: { name: string; color: string; icon: string } }[];
+  stage_id: string | null;
+  stage: Stage | null;
+  customer: { id: string; name: string; company: string | null; phone: string | null } | null;
+  flags: JobFlag[];
 }
 
 type ViewMode = 'pipeline' | 'list' | 'calendar';
@@ -39,7 +44,6 @@ type ViewMode = 'pipeline' | 'list' | 'calendar';
 export default function AdminJobsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('pipeline');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showNewJobModal, setShowNewJobModal] = useState(false);
 
   // Fetch stages
   const { data: stages } = useSupabaseQuery<Stage[]>(
@@ -51,7 +55,7 @@ export default function AdminJobsPage() {
         .eq('is_active', true)
         .order('sort_order');
       if (error) throw error;
-      return data;
+      return (data || []) as Stage[];
     }
   );
 
@@ -65,11 +69,11 @@ export default function AdminJobsPage() {
           *,
           stage:job_stages(*),
           customer:customers(id, name, company, phone),
-          flags:job_flags_junction(flag:custom_flags(*))
+          flags:job_flags_junction(id, flag:custom_flags(*))
         `)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data as Job[];
+      return (data || []) as Job[];
     }
   );
 
@@ -104,7 +108,7 @@ export default function AdminJobsPage() {
     mutate(
       jobs?.map(job => 
         job.id === jobId 
-          ? { ...job, stage_id: newStageId, stage: stages?.find(s => s.id === newStageId)! }
+          ? { ...job, stage_id: newStageId, stage: stages?.find(s => s.id === newStageId) || null }
           : job
       ),
       false
@@ -112,7 +116,7 @@ export default function AdminJobsPage() {
 
     const { error } = await supabase
       .from('jobs')
-      .update({ stage_id: newStageId })
+      .update({ stage_id: newStageId } as never)
       .eq('id', jobId);
 
     if (error) {
@@ -131,10 +135,7 @@ export default function AdminJobsPage() {
           <h1 className="text-2xl font-bold text-white">Jobs</h1>
           <p className="text-white/60 mt-1">{jobs?.length || 0} total jobs</p>
         </div>
-        <button
-          onClick={() => setShowNewJobModal(true)}
-          className="btn-primary"
-        >
+        <button className="btn-primary">
           <Plus className="w-4 h-4" />
           New Job
         </button>
@@ -230,17 +231,19 @@ export default function AdminJobsPage() {
                     {job.flags?.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-2">
                         {job.flags.map((f) => (
-                          <span 
-                            key={f.id}
-                            className="tag"
-                            style={{ 
-                              backgroundColor: `${f.flag.color}20`,
-                              color: f.flag.color 
-                            }}
-                          >
-                            <Flag className="w-3 h-3" />
-                            {f.flag.name}
-                          </span>
+                          f.flag && (
+                            <span 
+                              key={f.id}
+                              className="tag"
+                              style={{ 
+                                backgroundColor: `${f.flag.color}20`,
+                                color: f.flag.color 
+                              }}
+                            >
+                              <Flag className="w-3 h-3" />
+                              {f.flag.name}
+                            </span>
+                          )
                         ))}
                       </div>
                     )}
@@ -250,7 +253,7 @@ export default function AdminJobsPage() {
                     </h4>
                     
                     <p className="text-sm text-white/60 mb-2">
-                      {job.customer?.company || job.customer?.name}
+                      {job.customer?.company || job.customer?.name || 'No customer'}
                     </p>
 
                     <div className="flex items-center justify-between text-xs text-white/40">
@@ -270,7 +273,7 @@ export default function AdminJobsPage() {
                 ))}
 
                 {/* Empty state */}
-                {jobsByStage[stage.id]?.length === 0 && (
+                {(!jobsByStage[stage.id] || jobsByStage[stage.id].length === 0) && (
                   <div className="text-center py-8 text-white/30 text-sm">
                     No jobs in this stage
                   </div>
@@ -310,21 +313,23 @@ export default function AdminJobsPage() {
                     )}
                   </td>
                   <td className="p-4">
-                    <p className="text-white">{job.customer?.name}</p>
+                    <p className="text-white">{job.customer?.name || '—'}</p>
                     {job.customer?.company && (
                       <p className="text-sm text-white/40">{job.customer.company}</p>
                     )}
                   </td>
                   <td className="p-4">
-                    <span 
-                      className="badge"
-                      style={{ 
-                        backgroundColor: `${job.stage?.color}20`,
-                        color: job.stage?.color 
-                      }}
-                    >
-                      {job.stage?.name}
-                    </span>
+                    {job.stage && (
+                      <span 
+                        className="badge"
+                        style={{ 
+                          backgroundColor: `${job.stage.color}20`,
+                          color: job.stage.color 
+                        }}
+                      >
+                        {job.stage.name}
+                      </span>
+                    )}
                   </td>
                   <td className="p-4 text-white/60">
                     {job.scheduled_date 
@@ -360,8 +365,6 @@ export default function AdminJobsPage() {
           Calendar view coming soon
         </div>
       )}
-
-      {/* New Job Modal would go here */}
     </div>
   );
 }
