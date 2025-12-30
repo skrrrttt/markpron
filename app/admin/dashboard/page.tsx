@@ -27,8 +27,8 @@ interface RecentJob {
   id: string;
   name: string;
   scheduled_date: string;
-  stage: { name: string; color: string };
-  customer: { name: string; company: string };
+  stage: { name: string; color: string } | null;
+  customer: { name: string; company: string } | null;
 }
 
 export default function AdminDashboardPage() {
@@ -36,21 +36,21 @@ export default function AdminDashboardPage() {
   const { data: stats } = useSupabaseQuery<DashboardStats>(
     'dashboard-stats',
     async (supabase) => {
-      const [jobs, customers, invoices] = await Promise.all([
+      const [jobsResult, customersResult, invoicesResult] = await Promise.all([
         supabase.from('jobs').select('id, stage_id', { count: 'exact' }),
         supabase.from('customers').select('id', { count: 'exact' }),
         supabase.from('invoices').select('status'),
       ]);
 
-      const completedStageIds = ['completed-stage-id']; // Would get from job_stages
+      const invoiceData = invoicesResult.data as { status: string }[] | null;
       
       return {
-        totalJobs: jobs.count || 0,
-        activeJobs: 0, // Calculate from stage
+        totalJobs: jobsResult.count || 0,
+        activeJobs: 0,
         completedThisMonth: 0,
-        totalCustomers: customers.count || 0,
-        pendingInvoices: invoices.data?.filter(i => i.status === 'sent').length || 0,
-        overdueInvoices: invoices.data?.filter(i => i.status === 'overdue').length || 0,
+        totalCustomers: customersResult.count || 0,
+        pendingInvoices: invoiceData?.filter(i => i.status === 'sent').length || 0,
+        overdueInvoices: invoiceData?.filter(i => i.status === 'overdue').length || 0,
       };
     }
   );
@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
         .select('id, name, scheduled_date, stage:job_stages(name, color), customer:customers(name, company)')
         .order('created_at', { ascending: false })
         .limit(5);
-      return data as RecentJob[];
+      return (data || []) as RecentJob[];
     }
   );
 
@@ -78,7 +78,7 @@ export default function AdminDashboardPage() {
         .select('id, name, scheduled_date, stage:job_stages(name, color), customer:customers(name, company)')
         .eq('scheduled_date', today)
         .limit(10);
-      return data as RecentJob[];
+      return (data || []) as RecentJob[];
     }
   );
 
@@ -125,14 +125,14 @@ export default function AdminDashboardPage() {
             </Link>
           </div>
 
-          {todayJobs?.length === 0 ? (
+          {!todayJobs || todayJobs.length === 0 ? (
             <div className="text-center py-8">
               <CheckCircle2 className="w-12 h-12 text-green-400/50 mx-auto mb-3" />
               <p className="text-white/60">No jobs scheduled for today</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {todayJobs?.map((job) => (
+              {todayJobs.map((job) => (
                 <Link 
                   key={job.id} 
                   href={`/admin/jobs/${job.id}`}
@@ -141,18 +141,20 @@ export default function AdminDashboardPage() {
                   <div className="min-w-0">
                     <p className="font-medium text-white truncate">{job.name}</p>
                     <p className="text-sm text-white/60 truncate">
-                      {job.customer?.company || job.customer?.name}
+                      {job.customer?.company || job.customer?.name || 'No customer'}
                     </p>
                   </div>
-                  <span 
-                    className="badge flex-shrink-0 ml-4"
-                    style={{ 
-                      backgroundColor: `${job.stage?.color}20`,
-                      color: job.stage?.color 
-                    }}
-                  >
-                    {job.stage?.name}
-                  </span>
+                  {job.stage && (
+                    <span 
+                      className="badge flex-shrink-0 ml-4"
+                      style={{ 
+                        backgroundColor: `${job.stage.color}20`,
+                        color: job.stage.color 
+                      }}
+                    >
+                      {job.stage.name}
+                    </span>
+                  )}
                 </Link>
               ))}
             </div>
@@ -183,15 +185,17 @@ export default function AdminDashboardPage() {
                       : 'Not scheduled'}
                   </p>
                 </div>
-                <span 
-                  className="badge flex-shrink-0 ml-4"
-                  style={{ 
-                    backgroundColor: `${job.stage?.color}20`,
-                    color: job.stage?.color 
-                  }}
-                >
-                  {job.stage?.name}
-                </span>
+                {job.stage && (
+                  <span 
+                    className="badge flex-shrink-0 ml-4"
+                    style={{ 
+                      backgroundColor: `${job.stage.color}20`,
+                      color: job.stage.color 
+                    }}
+                  >
+                    {job.stage.name}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
