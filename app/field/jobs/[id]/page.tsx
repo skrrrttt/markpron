@@ -13,28 +13,57 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import imageCompression from 'browser-image-compression';
 
+interface ChecklistItem {
+  id: string;
+  text: string;
+  is_checked: boolean;
+  is_required: boolean;
+}
+
+interface Checklist {
+  id: string;
+  name: string;
+  is_master: boolean;
+  items: ChecklistItem[];
+}
+
+interface Photo {
+  id: string;
+  photo_type: string;
+  storage_path: string;
+  caption: string | null;
+}
+
+interface Customer {
+  name: string;
+  company: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
+interface Stage {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface JobDetail {
   id: string;
   name: string;
-  description: string;
-  job_address_street: string;
-  job_address_city: string;
-  job_address_state: string;
-  job_address_zip: string;
-  scheduled_date: string;
-  scheduled_time_start: string;
-  scheduled_time_end: string;
+  description: string | null;
+  job_address_street: string | null;
+  job_address_city: string | null;
+  job_address_state: string | null;
+  job_address_zip: string | null;
+  scheduled_date: string | null;
+  scheduled_time_start: string | null;
+  scheduled_time_end: string | null;
   photos_required_before: boolean;
   photos_required_after: boolean;
-  stage: { id: string; name: string; color: string };
-  customer: { name: string; company: string; phone: string; email: string };
-  checklists: {
-    id: string;
-    name: string;
-    is_master: boolean;
-    items: { id: string; text: string; is_checked: boolean; is_required: boolean }[];
-  }[];
-  photos: { id: string; photo_type: string; storage_path: string; caption: string }[];
+  stage: Stage | null;
+  customer: Customer | null;
+  checklists: Checklist[];
+  photos: Photo[];
 }
 
 export default function FieldJobDetailPage() {
@@ -56,7 +85,7 @@ export default function FieldJobDetailPage() {
         .eq('id', jobId)
         .single();
       if (error) throw error;
-      return data as JobDetail;
+      return data as unknown as JobDetail;
     }
   );
 
@@ -79,7 +108,10 @@ export default function FieldJobDetailPage() {
       async () => {
         if (isOnline()) {
           const supabase = getSupabaseClient();
-          await supabase.from('job_checklist_items').update({ is_checked: newChecked, checked_at: newChecked ? new Date().toISOString() : null }).eq('id', itemId);
+          await supabase
+            .from('job_checklist_items')
+            .update({ is_checked: newChecked, checked_at: newChecked ? new Date().toISOString() : null } as never)
+            .eq('id', itemId);
         } else {
           await updateJobOffline(jobId, { checklistItemUpdate: { itemId, is_checked: newChecked } });
         }
@@ -98,7 +130,7 @@ export default function FieldJobDetailPage() {
         const supabase = getSupabaseClient();
         const fileName = `${jobId}/${photoType}-${Date.now()}.jpg`;
         await supabase.storage.from('job-photos').upload(fileName, compressedFile);
-        await supabase.from('job_photos').insert({ job_id: jobId, photo_type: photoType, storage_path: fileName });
+        await supabase.from('job_photos').insert({ job_id: jobId, photo_type: photoType, storage_path: fileName } as never);
         toast.success('Photo uploaded');
         mutate();
       } else {
@@ -123,7 +155,7 @@ export default function FieldJobDetailPage() {
 
   const openNavigation = () => {
     if (!job) return;
-    const address = `${job.job_address_street}, ${job.job_address_city}, ${job.job_address_state} ${job.job_address_zip}`;
+    const address = `${job.job_address_street || ''}, ${job.job_address_city || ''}, ${job.job_address_state || ''} ${job.job_address_zip || ''}`;
     window.open(`https://maps.google.com/?q=${encodeURIComponent(address)}`, '_blank');
   };
 
@@ -142,9 +174,11 @@ export default function FieldJobDetailPage() {
         <div className="flex items-start justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-white mb-1">{job.name}</h1>
-            <p className="text-white/60">{job.customer?.company || job.customer?.name}</p>
+            <p className="text-white/60">{job.customer?.company || job.customer?.name || 'No customer'}</p>
           </div>
-          <span className="badge text-sm" style={{ backgroundColor: `${job.stage?.color}20`, color: job.stage?.color }}>{job.stage?.name}</span>
+          {job.stage && (
+            <span className="badge text-sm" style={{ backgroundColor: `${job.stage.color}20`, color: job.stage.color }}>{job.stage.name}</span>
+          )}
         </div>
         {job.description && <p className="text-white/70 text-sm mb-4">{job.description}</p>}
         <div className="flex flex-wrap gap-4 text-sm text-white/60 mb-4">
@@ -187,7 +221,7 @@ export default function FieldJobDetailPage() {
         </div>
         <label className="btn-field-secondary w-full cursor-pointer"><Camera className="w-5 h-5" /><span>Progress Photo</span><input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handlePhotoUpload(e, 'progress')} disabled={uploadingPhoto} /></label>
         {uploadingPhoto && <p className="text-center text-white/60 text-sm mt-3">Uploading...</p>}
-        {job.photos?.length > 0 && (
+        {job.photos && job.photos.length > 0 && (
           <div className="mt-4 grid grid-cols-3 gap-2">
             {job.photos.map((photo) => (
               <div key={photo.id} className="aspect-square rounded-lg overflow-hidden bg-dark-bg">
